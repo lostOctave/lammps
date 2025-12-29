@@ -1,0 +1,24 @@
+#log none
+#echo none
+
+group	todelete union all
+variable	n	equal	1
+label		replace_next
+	variable	x0	equal	x[${n}]
+	variable	y0	equal	y[${n}]
+
+	if "${x0}<=${ll}" then "variable x0 equal ${x0}+$L"
+	if "${x0}<=${ll}" then "variable y0 equal ${y0}+$L"
+	if "${x0}>${hl}"  then "variable x0 equal ${x0}-$L"
+	if "${y0}>${hl}"  then "variable y0 equal ${y0}-$L"
+
+	if "${n}<=${number_cells_large}" then "create_atoms    0       single ${x0} ${y0} 0 mol CellLarge ${n}" &
+	else "create_atoms    0       single ${x0} ${y0} 0 mol CellSmall ${n}"
+#	create_atoms    0       single ${x0} ${y0} 0 mol Cell ${n}
+	variable	n	equal	${n}+1
+	if "${n}<=${number_cells}" then "jump in.replace_particle_w_cells replace_next"
+
+delete_atoms	group	todelete compress no
+group todelete delete
+reset_atom_ids sort yes
+

@@ -1,0 +1,348 @@
+# run this input script for 1st time setting of the cells simulation and to equilibriate the system
+variable	number_cells	equal	1000
+variable	fraction	equal	1
+variable    	cut_length_in   equal   20
+variable	v0 		equal 	0.1
+variable	pre_fac		equal	10
+variable 	p0 		equal 	3.65
+variable	Nbeads_large	equal	50
+variable	num_dense	equal	1
+variable     Dr 		equal 	0.1
+variable     dt_integration  equal   0.001
+variable     tau_c equal 1000
+
+###random configuration compressed to a density instead of reading from restart file
+
+#dimensionality
+dimension	2
+
+#box and particle properties properties
+boundary	p p p
+atom_style	molecular
+neighbor	0.3 bin
+lattice		sq	1
+units 		lj
+#variable	dt_integration	equal	0.001
+timestep  	${dt_integration}
+
+region 	SimRegion block 0 1 0 1 -1 1
+create_box 2 SimRegion bond/types 1 angle/types 0 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 20
+
+######################################### simulation parameters
+variable	Rank		equal	1000
+variable	num_dense_start	equal	0.1
+variable	size_ratio	equal	1.4
+variable	number_cells_large	equal	ceil(${number_cells}*${fraction})
+variable	number_cells_small	equal	${number_cells}-${number_cells_large}
+
+variable	Nbeads_large	equal	50 #10*${nb_in}   #40  # number of beads making up each cell
+variable	Nbeads_small	equal	ceil(${Nbeads_large}/${size_ratio})
+
+variable	RadiusLarge	equal	0.5
+variable	RadiusSmall	equal	0.5/${size_ratio}
+
+variable	area_small	equal	PI*${RadiusSmall}^2
+variable	area_large	equal	PI*${RadiusLarge}^2
+variable	perimeter_small	equal	2*PI*${RadiusSmall}
+variable	perimeter_large	equal	2*PI*${RadiusLarge}
+variable	lbond_small	equal	${perimeter_small}/${Nbeads_small}
+variable	lbond_large	equal	${perimeter_large}/${Nbeads_large}
+
+variable	RadLarge_shell	equal	${RadiusLarge}+${lbond_large}/2
+variable	RadSmall_shell	equal	${RadiusSmall}+${lbond_large}/2
+variable	area_cells	equal	PI*${RadLarge_shell}^2*${number_cells_large}+PI*${RadSmall_shell}^2*${number_cells_small} #area occupied by the cells
+
+variable	L		equal	(${number_cells}/${num_dense_start})^0.5 #system size
+variable	hl		equal	0.5*${L}
+variable	ll		equal	-${hl}
+
+change_box all x final ${ll} ${hl} y final ${ll} ${hl}
+
+#random placement of the particles
+variable        seed  equal 1000*${Rank}
+create_atoms    1       random  ${number_cells}   ${seed}       NULL
+
+displace_atoms	all random ${L} ${L} 0 ${Rank}
+set     group all z 0.0
+fix     2D      all enforce2d
+
+##################################### initial configuration; we place Nbead WCA molecules and minimize the energy. Then, we replace the WCA with the cells
+mass    *	1.0
+
+variable	dia	equal	1.5
+variable        eps     equal   1
+variable        sigma   equal   ${dia}*2^(-1.0/6)
+variable        cut     equal   ${dia}
+
+
+pair_style      lj/cut 2.5
+pair_coeff      * * ${eps} ${sigma} ${cut}
+pair_modify shift yes
+
+comm_modify cutoff 4.0
+
+thermo  1000
+timestep        ${dt_integration}
+variable        etol    equal 0    #stopping tolerance - relative change in energy between successive iterations
+variable        ftol    equal 1e-10    #gloabl force less than ftot
+variable        maxiter equal 10000
+variable        maxeval equal 10000
+min_modify      line    forcezero
+min_style       cg
+minimize        ${etol} ${ftol} ${maxiter} ${maxeval}
+
+
+##### replace each of the particle in the minimized configuration with a cell
+shell ./template.x ${Nbeads_large} ${RadiusLarge}
+shell cp template.cell template.cell_large
+molecule CellLarge template.cell_large
+shell ./template.x ${Nbeads_small} ${RadiusSmall}
+shell cp template.cell template.cell_small
+molecule CellSmall template.cell_small
+include in.replace_particle_w_cells
+
+
+######## setting needed for usage of bond_harmonic_area
+
+compute Cells all chunk/atom molecule #### this compute must be called Cells
+fix	AreaCell all property/atom d_area_cell ghost yes # each atom knows the preferred values of the area of its cell
+fix	LengthBond all property/atom d_length_bond ghost yes # each atom knows the preferred values of the area of its cell
+fix	KArea all property/atom d_k_area ghost yes # each atom has its own area constant
+fix	theta_0 all property/atom d_theta_0 ghost yes #store initial theta for rotational msd calculation
+fix	FxActive all property/atom d_fx_active ghost yes #store x component of active force on each atom of the cell
+fix	FyActive all property/atom d_fy_active ghost yes #store y component of active force on each atom of the cell
+fix	Mag_F_Active all property/atom d_mag_factive ghost yes ## store net active force
+fix     theta all property/atom d_theta ghost yes
+fix     factive all property/atom d_factive ghost yes # optional argument to set heterogeneous self propulsion speed of cells
+fix     xc all property/atom d_xc ghost yes #x coord of center of the cell
+fix     yc all property/atom d_yc ghost yes #y coord of center of the cell
+fix	area all property/atom d_area ghost yes #store area of each cell
+
+fix	peri all property/atom d_peri ghost yes #store peri of each cell
+fix     shape all property/atom d_shape ghost yes #store shape index of each cell
+
+fix	eps_atom all property/atom d_eps_atom ghost yes #individual eps_att coefficients
+
+fix     force_pair_x all property/atom d_force_pair_x ghost yes #store sum of pair forces on an atom
+fix     force_pair_y all property/atom d_force_pair_y ghost yes #store sum of pair forces on an atom
+fix     prop_dir all property/atom d_prop_dir ghost yes # propulsion direction based on r.f_pair
+
+fix	radius_curvature all property/atom d_radius_curvature ghost yes #radius of curvature
+fix	angle_curvature all property/atom d_angle_curvature ghost yes #angle of curvature of 3 atoms
+
+group	MonomerLarge	molecule	1:${number_cells_large}
+group	MonomerSmall	subtract	all MonomerLarge
+
+###create different cell types
+group Type1 molecule 1:${number_cells}
+group Type2 subtract all Type1
+set group Type1 type 1
+set group Type2 type 2
+
+### adjust cell parameters to incorporate rigidity with shape parameter p0
+
+#variable p0 equal 0.01*${p0_in}
+variable area_prefac equal ${perimeter_large}*${perimeter_large}/(${area_large}*${p0}*${p0})
+variable modified_area_large equal ${area_prefac}*${area_large}
+variable modified_area_small equal ${area_prefac}*${area_small}
+
+
+##### Large & Small Cells: propertis
+variable	karea	equal	1000  #1000
+set	group	MonomerLarge	d_area_cell   ${modified_area_large}
+set	group	MonomerLarge	d_length_bond ${lbond_large}
+set 	group	MonomerLarge	d_k_area	${karea}
+
+
+set	group	MonomerSmall	d_area_cell ${modified_area_small}
+set	group	MonomerSmall	d_length_bond ${lbond_small}
+set 	group	MonomerSmall	d_k_area	${karea}
+
+group border_cells type 1
+
+##################################### set repulsive interaction before compression
+variable M	equal 1.0
+mass    *	$M
+
+#interaction between beads of different cells
+variable	dia	equal	${lbond_large}
+variable	epsilon	equal	1.0/${Nbeads_large}
+
+variable	eps11	equal	${epsilon}
+variable        sigma11   equal   ${dia}*2^(-1.0/6)
+variable        cut11     equal   ${dia} ###purely repulsive
+
+
+
+pair_style lj/smooth/linear 2.5
+pair_coeff      * * ${eps11} ${sigma11} ${cut11}
+pair_modify shift yes
+
+
+# particles of the same cell surface do not interact
+neigh_modify exclude molecule/intra border_cells
+
+######## bond between consecutive particles
+
+variable	epsilon	equal	1.0/${Nbeads_large}
+bond_style hybrid harmonic/area
+
+variable	L_bond	equal	${lbond_large}
+variable	K_bond	equal	1000000.0*${epsilon}
+bond_coeff 	1 harmonic/area ${K_bond} ${L_bond}
+
+#random direction of the self propelling directions
+
+variable        two_pi  equal   2*PI
+dump DUMPA all custom 1 mol_id.txt id mol
+dump_modify DUMPA sort id
+reset_timestep 0
+run	1
+
+undump	DUMPA
+shell           ./random_propelling_directions.x ${number_cells_large} ${Nbeads_large} ${number_cells_small} ${Nbeads_small}
+variable	thetafile atomfile self_propel_theta.txt
+set             atom * d_theta v_thetafile
+set		atom * d_theta_0 v_thetafile
+set		atom * d_fx_active	0
+set		atom * d_fy_active	0
+
+fix	NVE	all nve
+
+
+##### compute the occupied volume fraction 
+compute ac all property/atom d_area
+variable area_cell atom c_ac
+variable rad_eff atom (v_area_cell/PI)^0.5
+variable delarea atom 1.1*v_rad_eff*${lbond_large}*PI
+variable area_total atom v_area_cell+v_delarea
+
+compute area_sum_large MonomerLarge reduce sum v_area_total
+compute area_sum_small MonomerSmall reduce sum v_area_total
+
+variable area_sum_large equal c_area_sum_large/v_Nbeads_large
+variable area_sum_small equal c_area_sum_small/v_Nbeads_small
+variable area_sum equal v_area_sum_large+v_area_sum_small
+variable phi_real equal v_area_sum/vol
+
+###compute occupied volume fraction from perimeter
+compute pc all property/atom d_peri
+variable peri_cell atom c_pc
+variable delarea_p atom 1.1*${lbond_large}*v_peri_cell/2
+variable area_total_p atom v_area_cell+v_delarea_p
+
+compute area_sum_large_p MonomerLarge reduce sum v_area_total_p
+compute area_sum_small_p MonomerSmall reduce sum v_area_total_p
+
+variable area_sum_large_p equal c_area_sum_large_p/v_Nbeads_large
+variable area_sum_small_p equal c_area_sum_small_p/v_Nbeads_small
+variable area_sum_p equal v_area_sum_large_p+v_area_sum_small_p
+variable phi_real_p equal v_area_sum_p/vol
+
+
+thermo_style custom step temp pe ke etotal
+thermo 100
+
+reset_timestep 0
+
+### this step compresses the system to the final density
+variable	L		equal	(${number_cells}/${num_dense})^0.5 #system size
+variable	hl		equal	0.5*${L}
+variable	ll		equal	-${hl}
+
+fix COMPRESS all deform 1 x final ${ll} ${hl} y final ${ll} ${hl} remap x units box 
+
+dump DUMPA all custom 1000 /mnt/d/NextTissUe_data/compress_cells_propelled_NC${number_cells}_rho${num_dense}_att${pre_fac}_v${v0}_p0${p0}_dr${Dr}_tau${tau_c}.dat id x y mol fx fy d_xc d_yc d_area d_peri d_shape v_area_total
+dump_modify DUMPA sort id
+run	10000
+unfix	COMPRESS
+run	100000
+undump	DUMPA
+reset_timestep 0
+############################################################################################################ make the interaction attractive
+
+variable	dia	equal	${lbond_large}
+variable	epsilon	equal	1.0/${Nbeads_large}
+
+variable	eps11	equal	 ${epsilon}
+
+variable        sigma11   equal   1.1*${dia} #*2^(-1.0/6)
+#variable        cut11     equal   ${sigma11} ### purely repulsive
+variable        cut11     equal   0.1*${cut_length_in}*${dia} ###short range attraction
+#variable	pre_fac	equal	0.01*${pre_in}
+variable    eps_wca equal   ${eps11}
+variable	eps_att11	equal	${pre_fac}*${eps_wca}
+variable    eps_att22   equal    ${eps_att11}/10
+variable    eps_att12   equal   ${eps_att11}/20 
+set atom * d_eps_atom ${eps_att11}
+
+variable visc equal 50
+fix    viscous all viscous ${visc} ### not needed for fix propel/cell temp
+
+pair_style      wca/att ${cut11}
+pair_coeff      1 1 ${eps_att11} ${sigma11} ${cut11} ${eps_wca}
+pair_coeff      2 2 ${eps_att22} ${sigma11} ${cut11} ${eps_wca}
+pair_coeff      1 2 ${eps_att12} ${sigma11} ${cut11} ${eps_wca}
+neigh_modify exclude molecule/intra border_cells
+
+
+######## thermal dynamics
+#variable T_in    equal 0.0001*${T_step}
+#variable	temp_factor	equal	${T_in}
+#variable	damp	equal 	50
+
+#fix active all propel/cell temp ${temp_factor} ${damp} ${seed}
+#### end thermal dynamics
+
+
+####### activity settings
+#variable v0 equal 0.1 ### self propulsion speed
+
+#variable	tau_c equal 1000   #### tau << Dr implies contact inhibition of locomotion
+
+#variable	Dr equal 0.1  # rotational diffusion 
+
+fix active all propel/cell cell ${v0} ${visc} ${tau_c} ${Dr} ${seed}
+
+fix     cal_del_theta all property/atom d_theta2 ghost yes
+set	atom * d_theta2 0
+
+###########compute contact
+compute f_pair_x all property/atom d_force_pair_x
+compute f_pair_y all property/atom d_force_pair_y
+compute x_unwrap all property/atom xu
+compute y_unwrap all property/atom yu
+compute com_x all property/atom d_xc
+compute com_y all property/atom d_yc
+variable rad_dot_f atom (c_x_unwrap-c_com_x)*c_f_pair_x+(c_y_unwrap-c_com_y)*c_f_pair_y
+variable net_pair_f atom (c_f_pair_x^2+c_f_pair_y^2)^0.5
+variable time equal step*${dt_integration}
+#####compute shape index
+compute q0_l MonomerLarge property/atom d_shape
+compute q0_s MonomerSmall property/atom d_shape
+compute mean_q0_large MonomerLarge reduce ave c_q0_l
+compute mean_q0_small MonomerSmall reduce ave c_q0_s
+
+variable Vmean_q0 equal " (c_mean_q0_large * v_number_cells_large + c_mean_q0_small * v_number_cells_small) / v_number_cells "
+thermo_style custom step temp pe ke etotal press
+thermo 100000
+
+variable TEMP	equal temp
+variable PRESS equal press
+variable VOL equal vol
+variable KE equal ke
+variable E_TOT equal etotal
+compute KE_atom all ke/atom
+
+run 1000000
+reset_timestep 0
+
+dump DUMPB all custom 10 /mnt/d/NextTissUe_data/snapcells_thermo_NC${number_cells}_rho${num_dense}_att${pre_fac}_v${v0}_p0${p0}_dr${Dr}_tau${tau_c}_*.dat id x y xu yu mol fx fy d_xc d_yc d_fx_active d_fy_active d_shape v_rad_dot_f v_net_pair_f d_theta d_prop_dir
+
+dump_modify DUMPB every 100000 first yes append no sort id
+
+run	20000001
+undump  DUMPB
+jump SELF END
+
+label END
