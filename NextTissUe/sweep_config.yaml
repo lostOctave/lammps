@@ -1,0 +1,52 @@
+# Multi-parameter sweep configuration for NextTissUe
+
+campaigns:
+  1:  # Campaign 1: karea sweep
+    name: "karea_sweep"
+    description: "Vary incompressibility (karea) with fixed attraction"
+    fixed:
+      pre_fac: 10
+    sweep:
+      karea: [500, 1000, 2000, 5000]
+      fd: [200, 500, 1000, 2000]
+
+  2:  # Campaign 2: pre_fac sweep
+    name: "pre_fac_sweep"
+    description: "Vary attraction strength (pre_fac) with fixed incompressibility"
+    fixed:
+      karea: 1000
+    sweep:
+      pre_fac: [5, 10, 20, 50]
+      fd: [200, 500, 1000, 2000]
+
+# LAMMPS executable configuration
+lammps_exe: "/home/lost_octave/LAMMPS/build/lmp"
+mpi_processes: 12  # Number of MPI processes per simulation
+
+# Global simulation parameters (user's current modifications)
+simulation:
+  main_run_steps: 500000   # Main measurement phase duration (user modified from 3000000)
+  dump_interval: 5000      # Trajectory dump frequency in steps (user modified from 1000)
+
+  # Optional: uncomment to override other simulation phases
+  # compression_steps: 5000
+  # equilibration_steps: 10000
+  # pre_measurement_steps: 5000
+
+# Input file to use
+input_file: "in.demo_hexatic"
+
+# Base output directory
+output_base: "/mnt/d/NextTissUe_data/run"
+
+# Files to symlink into each run directory
+dependencies:
+  - "initial_cells.data"
+  - "random_propelling_directions.x"
+
+# Notes:
+# - Each simulation uses MPI parallelism (mpirun -np 12)
+# - Simulations run sequentially (one at a time)
+# - Total runs: Campaign 1 (16) + Campaign 2 (16) = 32 runs
+# - Estimated time: ~32-96 minutes with current reduced setup
+# - Disk space: ~6.5 GB for all 32 runs

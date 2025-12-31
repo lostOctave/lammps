@@ -6,13 +6,15 @@ variable	number_cells	equal	900      # Updated to match initial_cells.data
 variable	fraction	equal	1
 variable    	cut_length_in   equal   20
 variable	v0 		equal 	0.001
-variable	pre_fac		equal	10
+#variable	pre_fac		equal	10  # Commented out: passed via -var in parameter sweep (default: 10)
 variable 	p0 		equal 	3.65
 variable	Nbeads_large	equal	50
 variable	num_dense	equal	1
 variable     Dr 		equal 	1
 variable     dt_integration  equal   0.001
 variable     tau_c equal 1000
+#variable     main_run_steps  equal   500000   # Commented out: passed via -var in parameter sweep (default: 500000, user modified from 3000000)
+#variable     dump_interval   equal   5000     # Commented out: passed via -var in parameter sweep (default: 5000, user modified from 1000)
 
 ######## System setup ########
 dimension	2
@@ -90,7 +92,7 @@ variable modified_area_large equal ${area_prefac}*${area_large}
 variable modified_area_small equal ${area_prefac}*${area_small}
 
 ##### Large & Small Cells: properties
-variable	karea	equal	1000
+#variable	karea	equal	1000  # Commented out: passed via -var in parameter sweep (default: 1000)
 set	group	MonomerLarge	d_area_cell   ${modified_area_large}
 set	group	MonomerLarge	d_length_bond ${lbond_large}
 set 	group	MonomerLarge	d_k_area	${karea}
@@ -248,7 +250,7 @@ compute mean_q0_small MonomerSmall reduce ave c_q0_s
 
 variable Vmean_q0 equal " (c_mean_q0_large * v_number_cells_large + c_mean_q0_small * v_number_cells_small) / v_number_cells "
 thermo_style custom step temp pe ke etotal press
-thermo 100000
+thermo 5000  # Output every 5000 steps for live progress visualization (was 100000)
 
 variable TEMP	equal temp
 variable PRESS equal press
@@ -274,8 +276,8 @@ group probe_cell_1 molecule ${probe_mol_1}
 
 # Apply constant force in +x direction (0 degrees)
 # Total force fd = 500.0, distributed over 50 beads per cell
-variable fd equal 500.0
-variable force_per_bead equal ${fd}/${Nbeads_large}  # fd/50 = 10.0
+#variable fd equal 500.0  # Commented out: passed via -var in parameter sweep (default: 500)
+variable force_per_bead equal ${fd}/${Nbeads_large}  # fd passed via -var, auto-calculated
 
 fix probe_force_1 probe_cell_1 addforce ${force_per_bead} 0.0 0.0
 # fix probe_force_2 probe_cell_2 addforce ${force_per_bead} 0.0 0.0    # DISABLED: Only drag cell 1
@@ -345,11 +347,11 @@ reset_timestep 0
 ###############################################################################
 # Output: atom positions, molecule ID, forces, cell center, cell properties
 # Suitable for OVITO: positions + molecule coloring + cell tracking
-dump OVITO_DUMP all custom 1000 /mnt/d/NextTissUe_data/ovito_cells_NC${number_cells}_fd${fd}.lammpstrj &
+dump OVITO_DUMP all custom ${dump_interval} /mnt/d/NextTissUe_data/ovito_cells_NC${number_cells}_fd${fd}.lammpstrj &
      id mol type x y xu yu d_xc d_yc d_area d_peri d_shape
 dump_modify OVITO_DUMP sort id
 
-run	3000000  # REDUCED: Main measurement run (was 20000001)
+run	${main_run_steps}  # Main measurement run (configurable via -var flag)
 
 # Cleanup dumps
 undump  OVITO_DUMP
