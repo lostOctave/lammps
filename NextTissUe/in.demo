@@ -334,7 +334,7 @@ variable KE equal ke
 variable E_TOT equal etotal
 compute KE_atom all ke/atom
 
-run 1000000
+run 50000
 reset_timestep 0
 
 dump DUMPB all custom 10 /mnt/d/NextTissUe_data/snapcells_thermo_NC${number_cells}_rho${num_dense}_att${pre_fac}_v${v0}_p0${p0}_dr${Dr}_tau${tau_c}_*.dat id x y xu yu mol fx fy d_xc d_yc d_fx_active d_fy_active d_shape v_rad_dot_f v_net_pair_f d_theta d_prop_dir
