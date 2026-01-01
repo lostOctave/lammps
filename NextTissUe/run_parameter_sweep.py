@@ -322,6 +322,7 @@ class ParameterSweep:
         """Run all simulations sequentially
 
         Args:
+            resume: If False (default), skip completed runs. If True, force re-run even completed runs.
             simple_progress: Use single-line progress for terminals without ANSI support
         """
         # Initialize manifest
@@ -354,9 +355,9 @@ class ParameterSweep:
             self.log_progress(f"Run {idx}/{total_runs}: {run_name}")
             self.log_progress(f"Campaign {campaign_id} | karea={params['karea']} | pre_fac={params['pre_fac']} | fd={params['fd']}")
 
-            # Check if already complete
-            if resume and self.is_complete(run_dir):
-                self.log_progress(f"SKIPPED: Run already complete")
+            # Check if already complete (always skip unless --force-rerun)
+            if not resume and self.is_complete(run_dir):
+                self.log_progress(f"SKIPPED: Run already complete (use --force-rerun to override)")
                 self.update_manifest(params, 'completed', None, None, None, run_dir)
                 skipped += 1
                 completed += 1
@@ -513,7 +514,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run all campaigns (32 runs)
+  # Run all campaigns (32 runs) - automatically skips completed runs
   python3 run_parameter_sweep.py --all
 
   # Run only Campaign 1 (karea sweep)
@@ -522,8 +523,8 @@ Examples:
   # Quick test with short run
   python3 run_parameter_sweep.py --campaign 1 --main-run-steps 10000 --dump-interval 100
 
-  # Resume interrupted sweep
-  python3 run_parameter_sweep.py --all --resume
+  # Force re-run even if COMPLETE markers exist (rare use case)
+  python3 run_parameter_sweep.py --all --force-rerun
         """
     )
 
@@ -550,8 +551,8 @@ Examples:
                        help='Trajectory dump frequency in steps (default: 5000, user modified)')
 
     # Control options
-    parser.add_argument('--resume', action='store_true',
-                       help='Resume interrupted sweep (skip COMPLETE runs)')
+    parser.add_argument('--force-rerun', action='store_true',
+                       help='Force re-run even if COMPLETE marker exists (default: skip completed runs)')
     parser.add_argument('--config', type=str,
                        help='YAML config file (if not specified, uses hardcoded campaigns)')
     parser.add_argument('--simple-progress', action='store_true',
@@ -620,7 +621,7 @@ Examples:
         dump_interval=dump_interval
     )
 
-    sweep.execute_sweep(campaign_ids, resume=args.resume, simple_progress=args.simple_progress)
+    sweep.execute_sweep(campaign_ids, resume=args.force_rerun, simple_progress=args.simple_progress)
 
 if __name__ == '__main__':
     main()

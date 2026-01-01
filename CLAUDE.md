@@ -318,6 +318,16 @@ cd .. && mkdir build && cmake -S cmake -B build -C cmake/presets/basic.cmake
 
 This repository includes a custom package called `NextTissUe` located in the `NextTissUe/` directory. This package has been integrated with the USER-AREABOND package (see src/USER-AREABOND/).
 
+**For NextTissUe-specific documentation, see:**
+- **[NextTissUe/CLAUDE_INDEX.md](NextTissUe/CLAUDE_INDEX.md)** - Comprehensive index of all NextTissUe documentation
+- **[NextTissUe/WORKING_NOTES.md](NextTissUe/WORKING_NOTES.md)** - User preferences and collaboration notes
+- **[NextTissUe/MICRORHEOLOGY_SUMMARY.md](NextTissUe/MICRORHEOLOGY_SUMMARY.md)** - Microrheology setup and force application
+
+**Key tools:**
+- `run_parameter_sweep.py` - Automated parameter sweep with live progress (defaults to skipping completed runs)
+- `sweep_config.yaml` - Campaign configuration (karea, pre_fac, fd sweeps)
+- `in.demo_hexatic` - Main LAMMPS input for epithelial tissue simulations
+
 ## Code Review Guidelines
 
 When performing code reviews, apply:
